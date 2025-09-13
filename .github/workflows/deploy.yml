@@ -1,0 +1,168 @@
+name: Deploy Interview Assistant
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  SAM_TEMPLATE: infrastructure/template.yaml
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            services/*/package-lock.json
+            mcp-servers/package-lock.json
+      
+      - name: Install dependencies
+        run: |
+          cd frontend && npm ci
+          cd ../mcp-servers && npm ci
+          for dir in services/*/; do
+            if [ -f "$dir/package.json" ]; then
+              cd "$dir" && npm ci && cd ../..
+            fi
+          done
+      
+      - name: Run frontend tests
+        run: |
+          cd frontend
+          npm test -- --coverage --watchAll=false
+      
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Install Lambda dependencies
+        run: |
+          for dir in services/*/; do
+            if [ -f "$dir/package.json" ]; then
+              cd "$dir" && npm ci --production && cd ../..
+            fi
+          done
+      
+      - name: Build SAM application
+        run: |
+          cd infrastructure
+          sam build --use-container
+      
+      - name: Deploy SAM application
+        run: |
+          cd infrastructure
+          sam deploy \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --stack-name interview-assistant-${{ github.run_number }} \
+            --s3-bucket ${{ secrets.SAM_DEPLOYMENT_BUCKET }} \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.AWS_REGION }} \
+            --parameter-overrides Environment=prod
+      
+      - name: Get stack outputs
+        id: stack-outputs
+        run: |
+          cd infrastructure
+          API_ENDPOINT=$(sam list stack-outputs --stack-name interview-assistant-${{ github.run_number }} --output json | jq -r '.[] | select(.OutputKey=="ApiEndpoint") | .OutputValue')
+          WEBSITE_URL=$(sam list stack-outputs --stack-name interview-assistant-${{ github.run_number }} --output json | jq -r '.[] | select(.OutputKey=="WebsiteURL") | .OutputValue')
+          TRANSCRIPTS_BUCKET=$(sam list stack-outputs --stack-name interview-assistant-${{ github.run_number }} --output json | jq -r '.[] | select(.OutputKey=="TranscriptsBucket") | .OutputValue')
+          
+          echo "api-endpoint=$API_ENDPOINT" >> $GITHUB_OUTPUT
+          echo "website-url=$WEBSITE_URL" >> $GITHUB_OUTPUT
+          echo "transcripts-bucket=$TRANSCRIPTS_BUCKET" >> $GITHUB_OUTPUT
+      
+      - name: Build and deploy frontend
+        run: |
+          cd frontend
+          npm ci
+          REACT_APP_API_URL=${{ steps.stack-outputs.outputs.api-endpoint }} npm run build
+          
+          # Get S3 bucket name from CloudFormation stack
+          BUCKET_NAME=$(aws cloudformation describe-stacks \
+            --stack-name interview-assistant-${{ github.run_number }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`StaticWebsiteBucket`].OutputValue' \
+            --output text)
+          
+          # Sync build to S3
+          aws s3 sync build/ s3://$BUCKET_NAME --delete
+          
+          # Invalidate CloudFront cache
+          DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+            --stack-name interview-assistant-${{ github.run_number }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDistribution`].OutputValue' \
+            --output text)
+          
+          if [ ! -z "$DISTRIBUTION_ID" ]; then
+            aws cloudfront create-invalidation \
+              --distribution-id $DISTRIBUTION_ID \
+              --paths "/*"
+          fi
+      
+      - name: Run integration tests
+        run: |
+          cd tests
+          API_BASE_URL=${{ steps.stack-outputs.outputs.api-endpoint }} node integration-test.js
+      
+      - name: Update MCP configuration
+        run: |
+          # Update MCP config with actual resource names
+          sed -i "s/your-transcripts-bucket-name/${{ steps.stack-outputs.outputs.transcripts-bucket }}/g" mcp.json
+          sed -i "s/your-sessions-table-name/interview-assistant-${{ github.run_number }}-SessionsTable-*/g" mcp.json
+          sed -i "s/your-users-table-name/interview-assistant-${{ github.run_number }}-UsersTable-*/g" mcp.json
+          
+          echo "Updated MCP configuration:"
+          cat mcp.json
+      
+      - name: Deploy summary
+        run: |
+          echo "🚀 Deployment completed successfully!"
+          echo "📊 API Endpoint: ${{ steps.stack-outputs.outputs.api-endpoint }}"
+          echo "🌐 Website URL: ${{ steps.stack-outputs.outputs.website-url }}"
+          echo "📁 Transcripts Bucket: ${{ steps.stack-outputs.outputs.transcripts-bucket }}"
+          echo ""
+          echo "Next steps:"
+          echo "1. Copy the updated mcp.json to ~/.aws/amazonq/mcp.json"
+          echo "2. Install MCP server dependencies: cd mcp-servers && npm install"
+          echo "3. Test the application at the website URL above"
