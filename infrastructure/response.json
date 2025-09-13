@@ -1,0 +1,1 @@
+{"statusCode":201,"headers":{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"Content-Type,Authorization","Access-Control-Allow-Methods":"POST,OPTIONS","Content-Type":"application/json"},"body":"{\"sessionId\":\"b5dfa627-9016-45b5-b163-046c85ac5ac0\",\"status\":\"created\"}"}

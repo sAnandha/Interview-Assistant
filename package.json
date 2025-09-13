@@ -1,0 +1,37 @@
+{
+  "name": "intelligent-mock-interview-assistant",
+  "version": "1.0.0",
+  "description": "A production-ready serverless application for conducting AI-powered mock interviews",
+  "scripts": {
+    "install-all": "npm run install-frontend && npm run install-services && npm run install-mcp",
+    "install-frontend": "cd frontend && npm install",
+    "install-services": "for dir in services/*/; do if [ -f \"$dir/package.json\" ]; then cd \"$dir\" && npm install && cd ../..; fi; done",
+    "install-mcp": "cd mcp-servers && npm install",
+    "build": "cd infrastructure && sam build",
+    "deploy": "cd infrastructure && sam deploy",
+    "deploy-guided": "cd infrastructure && sam deploy --guided",
+    "local-api": "cd infrastructure && sam local start-api --port 3001",
+    "dev-frontend": "cd frontend && REACT_APP_API_URL=http://localhost:3001 npm start",
+    "build-frontend": "cd frontend && npm run build",
+    "test": "cd tests && node integration-test.js",
+    "test-frontend": "cd frontend && npm test",
+    "clean": "rm -rf frontend/build && rm -rf infrastructure/.aws-sam",
+    "validate": "cd infrastructure && sam validate"
+  },
+  "keywords": [
+    "aws",
+    "serverless",
+    "interview",
+    "ai",
+    "lambda",
+    "dynamodb",
+    "s3",
+    "react",
+    "mcp"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "aws-sdk": "^2.1000.0"
+  }
+}

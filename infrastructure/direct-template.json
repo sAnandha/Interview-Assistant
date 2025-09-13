@@ -1,0 +1,138 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    "LambdaBucket": {
+      "Type": "String",
+      "Default": "interview-assistant-lambda-code-538746444"
+    }
+  },
+  "Resources": {
+    "SessionsTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {"AttributeName": "sessionId", "AttributeType": "S"}
+        ],
+        "KeySchema": [
+          {"AttributeName": "sessionId", "KeyType": "HASH"}
+        ]
+      }
+    },
+    "TranscriptsBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "CorsConfiguration": {
+          "CorsRules": [{
+            "AllowedHeaders": ["*"],
+            "AllowedMethods": ["GET", "PUT", "POST"],
+            "AllowedOrigins": ["*"]
+          }]
+        }
+      }
+    },
+    "LambdaRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {"Service": "lambda.amazonaws.com"},
+            "Action": "sts:AssumeRole"
+          }]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        ],
+        "Policies": [{
+          "PolicyName": "DynamoDBAccess",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Effect": "Allow",
+              "Action": ["dynamodb:*"],
+              "Resource": {"Fn::GetAtt": ["SessionsTable", "Arn"]}
+            }, {
+              "Effect": "Allow",
+              "Action": ["s3:*"],
+              "Resource": [
+                {"Fn::GetAtt": ["TranscriptsBucket", "Arn"]},
+                {"Fn::Sub": "${TranscriptsBucket}/*"}
+              ]
+            }]
+          }
+        }]
+      }
+    },
+    "CreateSessionFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Runtime": "nodejs18.x",
+        "Handler": "index.handler",
+        "Role": {"Fn::GetAtt": ["LambdaRole", "Arn"]},
+        "Code": {
+          "S3Bucket": {"Ref": "LambdaBucket"},
+          "S3Key": "create-session.zip"
+        },
+        "Environment": {
+          "Variables": {
+            "SESSIONS_TABLE": {"Ref": "SessionsTable"},
+            "CORS_ORIGIN": "*"
+          }
+        }
+      }
+    },
+    "InterviewApi": {
+      "Type": "AWS::ApiGatewayV2::Api",
+      "Properties": {
+        "Name": "InterviewApi",
+        "ProtocolType": "HTTP",
+        "CorsConfiguration": {
+          "AllowOrigins": ["*"],
+          "AllowMethods": ["*"],
+          "AllowHeaders": ["*"]
+        }
+      }
+    },
+    "CreateSessionIntegration": {
+      "Type": "AWS::ApiGatewayV2::Integration",
+      "Properties": {
+        "ApiId": {"Ref": "InterviewApi"},
+        "IntegrationType": "AWS_PROXY",
+        "IntegrationUri": {"Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateSessionFunction.Arn}/invocations"},
+        "PayloadFormatVersion": "2.0"
+      }
+    },
+    "CreateSessionRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Properties": {
+        "ApiId": {"Ref": "InterviewApi"},
+        "RouteKey": "POST /sessions",
+        "Target": {"Fn::Sub": "integrations/${CreateSessionIntegration}"}
+      }
+    },
+    "ApiStage": {
+      "Type": "AWS::ApiGatewayV2::Stage",
+      "Properties": {
+        "ApiId": {"Ref": "InterviewApi"},
+        "StageName": "$default",
+        "AutoDeploy": true
+      }
+    },
+    "LambdaPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {"Ref": "CreateSessionFunction"},
+        "Action": "lambda:InvokeFunction",
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {"Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${InterviewApi}/*/*"}
+      }
+    }
+  },
+  "Outputs": {
+    "ApiEndpoint": {
+      "Value": {"Fn::Sub": "https://${InterviewApi}.execute-api.${AWS::Region}.amazonaws.com"}
+    }
+  }
+}

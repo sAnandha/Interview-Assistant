@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "interview-assistant-s3": {
+      "command": "node",
+      "args": ["./mcp-servers/s3-server.js"],
+      "env": {
+        "AWS_REGION": "us-east-1",
+        "S3_BUCKET": "interview-transcripts-1851162012"
+      }
+    },
+    "interview-assistant-dynamodb": {
+      "command": "node", 
+      "args": ["./mcp-servers/dynamodb-server.js"],
+      "env": {
+        "AWS_REGION": "us-east-1",
+        "SESSIONS_TABLE": "interview-minimal-SessionsTable-1L5VW7F0T80QG",
+        "USERS_TABLE": "interview-minimal-SessionsTable-1L5VW7F0T80QG"
+      }
+    }
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    "Environment": {
+      "Type": "String",
+      "Default": "prod"
+    }
+  },
+  "Resources": {
+    "TenantsTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {"AttributeName": "tenantId", "AttributeType": "S"},
+          {"AttributeName": "subscriptionTier", "AttributeType": "S"}
+        ],
+        "KeySchema": [
+          {"AttributeName": "tenantId", "KeyType": "HASH"}
+        ],
+        "GlobalSecondaryIndexes": [{
+          "IndexName": "SubscriptionIndex",
+          "KeySchema": [
+            {"AttributeName": "subscriptionTier", "KeyType": "HASH"}
+          ],
+          "Projection": {"ProjectionType": "ALL"}
+        }]
+      }
+    },
+    "SessionsTableV2": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {"AttributeName": "tenantId", "AttributeType": "S"},
+          {"AttributeName": "sessionId", "AttributeType": "S"},
+          {"AttributeName": "userId", "AttributeType": "S"}
+        ],
+        "KeySchema": [
+          {"AttributeName": "tenantId", "KeyType": "HASH"},
+          {"AttributeName": "sessionId", "KeyType": "RANGE"}
+        ],
+        "GlobalSecondaryIndexes": [{
+          "IndexName": "UserIndex",
+          "KeySchema": [
+            {"AttributeName": "tenantId", "KeyType": "HASH"},
+            {"AttributeName": "userId", "KeyType": "RANGE"}
+          ],
+          "Projection": {"ProjectionType": "ALL"}
+        }]
+      }
+    },
+    "AdminDashboardFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Runtime": "nodejs18.x",
+        "Handler": "index.handler",
+        "Role": {"Fn::GetAtt": ["LambdaRole", "Arn"]},
+        "Code": {
+          "ZipFile": "exports.handler = async (event) => { const tenantId = event.pathParameters.tenantId; const stats = await getTenantStats(tenantId); return { statusCode: 200, headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(stats) }; }; async function getTenantStats(tenantId) { return { totalSessions: 150, activeUsers: 45, avgScore: 7.2, completionRate: 0.85 }; }"
+        },
+        "Environment": {
+          "Variables": {
+            "TENANTS_TABLE": {"Ref": "TenantsTable"},
+            "SESSIONS_TABLE": {"Ref": "SessionsTableV2"}
+          }
+        }
+      }
+    },
+    "LambdaRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {"Service": "lambda.amazonaws.com"},
+            "Action": "sts:AssumeRole"
+          }]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+          "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+        ]
+      }
+    }
+  }
+}

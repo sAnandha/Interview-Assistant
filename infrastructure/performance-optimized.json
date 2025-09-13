@@ -1,0 +1,78 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "OptimizedCreateSessionFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Runtime": "nodejs18.x",
+        "Handler": "index.handler",
+        "MemorySize": 512,
+        "Timeout": 10,
+        "ReservedConcurrencyLimit": 100,
+        "Environment": {
+          "Variables": {
+            "NODE_OPTIONS": "--enable-source-maps --max-old-space-size=512"
+          }
+        },
+        "Code": {
+          "ZipFile": "const { DynamoDBClient } = require('@aws-sdk/client-dynamodb'); const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb'); const client = new DynamoDBClient({ maxAttempts: 3, retryMode: 'adaptive' }); const docClient = DynamoDBDocumentClient.from(client, { marshallOptions: { removeUndefinedValues: true } }); exports.handler = async (event) => { const session = { sessionId: require('crypto').randomUUID(), userId: JSON.parse(event.body).userId, createdAt: new Date().toISOString() }; await docClient.send(new PutCommand({ TableName: process.env.SESSIONS_TABLE, Item: session })); return { statusCode: 201, headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-cache' }, body: JSON.stringify({ sessionId: session.sessionId, status: 'created' }) }; };"
+        }
+      }
+    },
+    "SessionsTableOptimized": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "BillingMode": "ON_DEMAND",
+        "AttributeDefinitions": [
+          {"AttributeName": "sessionId", "AttributeType": "S"}
+        ],
+        "KeySchema": [
+          {"AttributeName": "sessionId", "KeyType": "HASH"}
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true
+        },
+        "StreamSpecification": {
+          "StreamViewType": "NEW_AND_OLD_IMAGES"
+        }
+      }
+    },
+    "CloudFrontDistribution": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Origins": [{
+            "Id": "APIOrigin",
+            "DomainName": {"Fn::Sub": "${InterviewApi}.execute-api.${AWS::Region}.amazonaws.com"},
+            "CustomOriginConfig": {
+              "HTTPPort": 443,
+              "OriginProtocolPolicy": "https-only"
+            }
+          }],
+          "DefaultCacheBehavior": {
+            "TargetOriginId": "APIOrigin",
+            "ViewerProtocolPolicy": "redirect-to-https",
+            "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+            "Compress": true
+          },
+          "Enabled": true,
+          "HttpVersion": "http2and3",
+          "PriceClass": "PriceClass_100"
+        }
+      }
+    },
+    "InterviewApi": {
+      "Type": "AWS::ApiGatewayV2::Api",
+      "Properties": {
+        "Name": "OptimizedInterviewApi",
+        "ProtocolType": "HTTP",
+        "CorsConfiguration": {
+          "AllowOrigins": ["*"],
+          "AllowMethods": ["*"],
+          "AllowHeaders": ["*"],
+          "MaxAge": 86400
+        }
+      }
+    }
+  }
+}

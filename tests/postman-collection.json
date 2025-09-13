@@ -1,0 +1,231 @@
+{
+  "info": {
+    "name": "Interview Assistant API",
+    "description": "API tests for the Intelligent Mock Interview Assistant",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://your-api-gateway-url.execute-api.region.amazonaws.com",
+      "type": "string"
+    },
+    {
+      "key": "sessionId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "CORS Preflight",
+      "request": {
+        "method": "OPTIONS",
+        "header": [
+          {
+            "key": "Access-Control-Request-Method",
+            "value": "POST"
+          },
+          {
+            "key": "Access-Control-Request-Headers",
+            "value": "Content-Type"
+          },
+          {
+            "key": "Origin",
+            "value": "https://example.com"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/sessions",
+          "host": ["{{baseUrl}}"],
+          "path": ["sessions"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('CORS preflight successful', function () {",
+              "    pm.expect([200, 204]).to.include(pm.response.code);",
+              "});",
+              "",
+              "pm.test('CORS headers present', function () {",
+              "    pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.exist;",
+              "    pm.expect(pm.response.headers.get('Access-Control-Allow-Methods')).to.exist;",
+              "    pm.expect(pm.response.headers.get('Access-Control-Allow-Headers')).to.exist;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Session",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Origin",
+            "value": "https://example.com"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"test-user\",\n  \"interviewType\": \"behavioral\",\n  \"difficulty\": \"medium\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/sessions",
+          "host": ["{{baseUrl}}"],
+          "path": ["sessions"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Session created successfully', function () {",
+              "    pm.response.to.have.status(201);",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.sessionId).to.exist;",
+              "    pm.expect(response.status).to.equal('created');",
+              "    pm.collectionVariables.set('sessionId', response.sessionId);",
+              "});",
+              "",
+              "pm.test('CORS headers present', function () {",
+              "    pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.exist;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Question",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "https://example.com"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/sessions/{{sessionId}}/question",
+          "host": ["{{baseUrl}}"],
+          "path": ["sessions", "{{sessionId}}", "question"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Question retrieved successfully', function () {",
+              "    pm.response.to.have.status(200);",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.question).to.exist;",
+              "    pm.expect(response.questionIndex).to.be.a('number');",
+              "    pm.expect(response.totalQuestions).to.be.a('number');",
+              "});",
+              "",
+              "pm.test('CORS headers present', function () {",
+              "    pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.exist;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Record Transcript",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Origin",
+            "value": "https://example.com"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transcript\": \"This is a test response. I believe that effective communication is crucial in any workplace. For example, in my previous role, I had to present complex technical information to non-technical stakeholders. I structured my presentation clearly, used visual aids, and encouraged questions throughout to ensure understanding.\",\n  \"questionIndex\": 0,\n  \"audioUrl\": null\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/sessions/{{sessionId}}/transcript",
+          "host": ["{{baseUrl}}"],
+          "path": ["sessions", "{{sessionId}}", "transcript"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Transcript recorded successfully', function () {",
+              "    pm.response.to.have.status(200);",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.success).to.be.true;",
+              "    pm.expect(response.transcriptKey).to.exist;",
+              "});",
+              "",
+              "pm.test('CORS headers present', function () {",
+              "    pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.exist;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Score Session",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Origin",
+            "value": "https://example.com"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/sessions/{{sessionId}}/score",
+          "host": ["{{baseUrl}}"],
+          "path": ["sessions", "{{sessionId}}", "score"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Session scored successfully', function () {",
+              "    pm.response.to.have.status(200);",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.overallScore).to.be.a('number');",
+              "    pm.expect(response.scoredResponses).to.be.an('array');",
+              "    pm.expect(response.summary).to.exist;",
+              "});",
+              "",
+              "pm.test('CORS headers present', function () {",
+              "    pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.exist;",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
