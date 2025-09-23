@@ -2,6 +2,8 @@
 
 A production-ready serverless application for conducting AI-powered mock interviews with real-time feedback and transcript storage.
 
+For Live Preview : https://main.d2xh0meozdoof5.amplifyapp.com/
+
 ## Architecture
 
 - **Frontend**: React app hosted on S3 + CloudFront
